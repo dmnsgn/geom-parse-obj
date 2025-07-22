@@ -3,9 +3,11 @@ import typedArrayConstructor from "typed-array-constructor";
 const createGroup = () => ({
   name: "",
   faceData: [],
+  hasVertexColors: false,
   hasUVs: false,
   hasNormals: false,
   positionOffset: 0,
+  vertexColorsOffset: 0,
   uvOffset: 0,
   normalOffset: 0,
 });
@@ -19,11 +21,12 @@ function parseObj(text) {
 
   // Store parsed attributes
   const positions = [];
+  const vertexColors = [];
   const uvs = [];
   const normals = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].replace(/[\s]+/, " ");
+    const line = lines[i].replaceAll(/[\s]+/g, " ");
     const tokens = line.trim().split(" ");
 
     // Skip empty lines and commments
@@ -37,6 +40,15 @@ function parseObj(text) {
           Number(tokens[2]),
           Number(tokens[3]),
         ]);
+
+        // vertex colors (only if 4th, 5th and 6th defined): r g b
+        if (tokens[4] && tokens[5] && tokens[6]) {
+          vertexColors.push([
+            Number(tokens[4]),
+            Number(tokens[5]),
+            Number(tokens[6]),
+          ]);
+        }
         break;
       // texture vertices (skipping 3rd coordinate): u v
       case "vt":
@@ -51,6 +63,7 @@ function parseObj(text) {
         if (!g) {
           g = createGroup();
           g.positionOffset = positions.length;
+          g.vertexColorsOffset = vertexColors.length;
           g.uvOffset = uvs.length;
           g.normalOffset = normals.length;
           g.name = `Mesh_${groups.length}`;
@@ -74,6 +87,8 @@ function parseObj(text) {
 
         if (Number.isFinite(v0[1])) g.hasUVs = true;
         if (Number.isFinite(v0[2])) g.hasNormals = true;
+        // TODO: this is wrong assumption. How to check group vertexColor?
+        if (vertexColors.length) g.hasVertexColors = true;
 
         for (let v = 1; v < faceData.length - 1; v++) {
           g.faceData.push([v0, faceData[v], faceData[v + 1]]);
@@ -84,6 +99,7 @@ function parseObj(text) {
       case "g":
         g = createGroup();
         g.positionOffset = positions.length;
+        g.vertexColorsOffset = vertexColors.length;
         g.uvOffset = uvs.length;
         g.normalOffset = normals.length;
         g.name = line.slice(1).trim();
@@ -140,6 +156,7 @@ function parseObj(text) {
       positions: [],
       cells: new (typedArrayConstructor(size))(size),
     };
+    if (group.hasVertexColors) geometry.vertexColors = [];
     if (group.hasNormals) geometry.normals = [];
     if (group.hasUVs) geometry.uvs = [];
 
@@ -161,9 +178,13 @@ function parseObj(text) {
         geometry.cells[t * 3 + v] = index;
 
         let pIndex = faceData[v][0];
+        // TODO: wrong assumption. it should be f offset
         pIndex = pIndex > 0 ? pIndex - 1 : group.positionOffset + pIndex;
 
         geometry.positions[index] = positions[pIndex];
+        if (group.hasVertexColors) {
+          geometry.vertexColors[index] = vertexColors[pIndex];
+        }
         if (group.hasUVs) {
           let tIndex = faceData[v][1];
           tIndex = tIndex > 0 ? tIndex - 1 : group.uvOffset + tIndex;
@@ -179,6 +200,9 @@ function parseObj(text) {
 
     // Attributes length is only available now as we try to dedupe incoming data
     geometry.positions = new Float32Array(geometry.positions.flat());
+    if (group.hasVertexColors) {
+      geometry.vertexColors = new Float32Array(geometry.vertexColors.flat());
+    }
     if (group.hasNormals) {
       geometry.normals = new Float32Array(geometry.normals.flat());
     }
